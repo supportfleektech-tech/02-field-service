@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  kraPin    String?  @map("kra_pin")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  memberships Membership[]
+  customers   Customer[]
+  technicians Technician[]
+  workOrders  WorkOrder[]
+  parts       Part[]
+  auditEvents AuditEvent[]
+  apiKeys     ApiKey[]
+  @@map("organizations")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  memberships Membership[]
+  @@map("users")
+}
+
+model Membership {
+  id             String   @id @default(uuid())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String   @map("user_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  role           Role     @default(MEMBER)
+  createdAt      DateTime @default(now()) @map("created_at")
+  @@unique([userId, organizationId])
+  @@map("memberships")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Customer {
+  id             String   @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  name           String
+  phone          String?
+  email          String?
+  kraPin         String?  @map("kra_pin")
+  createdAt      DateTime @default(now()) @map("created_at")
+  workOrders     WorkOrder[]
+  @@index([organizationId])
+  @@map("customers")
+}
+
+model Technician {
+  id             String   @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  name           String
+  phone          String?
+  specialization String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  workOrders     WorkOrder[]
+  @@index([organizationId])
+  @@map("technicians")
+}
+
+model WorkOrder {
+  id             String   @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  customer       Customer @relation(fields: [customerId], references: [id])
+  customerId     String   @map("customer_id")
+  technician     Technician? @relation(fields: [technicianId], references: [id])
+  technicianId   String?  @map("technician_id")
+  number         String
+  title          String
+  description    String?
+  status         WorkOrderStatus @default(REQUESTED)
+  priority       Priority @default(NORMAL)
+  scheduledAt    DateTime? @map("scheduled_at")
+  completedAt    DateTime? @map("completed_at")
+  totalCents     Int      @default(0) @map("total_cents")
+  currency       String   @default("KES")
+  createdAt      DateTime @default(now()) @map("created_at")
+  jobCard        JobCard?
+  parts          PartUsage[]
+  serviceReport  ServiceReport?
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@map("work_orders")
+}
+
+enum WorkOrderStatus {
+  REQUESTED
+  QUOTED
+  APPROVED
+  DISPATCHED
+  IN_PROGRESS
+  COMPLETED
+  INVOICED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model JobCard {
+  id             String   @id @default(uuid())
+  workOrder      WorkOrder @relation(fields: [workOrderId], references: [id])
+  workOrderId    String   @unique @map("work_order_id")
+  notes          String?
+  checklists     Json?
+  startedAt      DateTime? @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  @@map("job_cards")
+}
+
+model Part {
+  id             String   @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  sku            String
+  name           String
+  unitCostCents  Int      @map("unit_cost_cents")
+  quantityOnHand Int      @default(0) @map("quantity_on_hand")
+  usages         PartUsage[]
+  @@unique([organizationId, sku])
+  @@map("parts")
+}
+
+model PartUsage {
+  id          String  @id @default(uuid())
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
+  workOrderId String  @map("work_order_id")
+  part        Part    @relation(fields: [partId], references: [id])
+  partId      String  @map("part_id")
+  quantity    Int
+  unitCostCents Int  @map("unit_cost_cents")
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@map("part_usages")
+}
+
+model ServiceReport {
+  id           String   @id @default(uuid())
+  workOrder    WorkOrder @relation(fields: [workOrderId], references: [id])
+  workOrderId  String   @unique @map("work_order_id")
+  summary      String
+  signatureB64 String?  @map("signature_b64")
+  gpsLat       Float?   @map("gps_lat")
+  gpsLng       Float?   @map("gps_lng")
+  photoUrls    String[] @map("photo_urls")
+  createdAt    DateTime @default(now()) @map("created_at")
+  @@map("service_reports")
+}
+
+model AuditEvent {
+  id             String   @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  actorId        String?  @map("actor_id")
+  action         String
+  entityType     String?  @map("entity_type")
+  entityId       String?  @map("entity_id")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  @@index([organizationId, createdAt])
+  @@map("audit_events")
+}
+
+model ApiKey {
+  id             String   @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String   @map("organization_id")
+  name           String
+  hashedKey      String   @map("hashed_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+  revokedAt      DateTime? @map("revoked_at")
+  @@map("api_keys")
+}
